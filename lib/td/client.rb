@@ -1,190 +1,148 @@
 
 module TreasureData
+  require 'td/client/api'
+  require 'td/client/models'
 
-require 'td/client/api'
-require 'td/client/model'
+  class Client
+    def initialize(apikey)
+      @apikey = apikey
+      @api = API.new(apikey)
+    end
 
+    attr_reader :apikey
 
-class Client
-  def self.authenticate(user, password)
-    api = API.new(nil)
-    apikey = api.authenticate(user, password)
-    new(apikey)
+    def self.authenticate(user, password)
+      apikey = API.new(nil).authenticate(user, password)
+      new(apikey)
+    end
+
+    def databases
+      DatabaseCollection.new(self)
+    end
+
+    def get_databases
+      databases.to_a
+    end
+
+    def create_database(name)
+      databases[name].create!
+    end
+
+    def delete_database(name)
+      databases[name].delete!
+    end
+
+    def database_exists?
+      databases[name].exists?
+    end
+
+    def tables(dbname)
+      TableCollection.new(self, dbname)
+    end
+
+    def get_tables(dbname)
+      tables(dbname).to_a
+    end
+
+    def create_table(dbname, tblname)
+      tables(dbname)[tblname].create!
+    end
+
+    def delete_table(dbname, tblname)
+      tables(dbname)[tblname].delete!
+    end
+
+    def table_exists?(dbname, tblname)
+      tables(dbname)[tblname].exists?
+    end
+
+    def get_table_count(dbname, tblname)
+      tables(dbname)[tblname].count
+    end
+
+    def get_table_schema(dbname, tblname)
+      tables(dbname)[tblname].schema
+    end
+
+    def set_table_schema(dbname, tblname, schema)
+      tables(dbname)[tblname].set_schema(schema)
+    end
+
+    def import(dbname, tblname, format, stream, size)
+      tables(dbname)[tblname].import(format, stream, size)
+    end
+
+    ## TODO
+    #def tail
+    #end
+
+    def result_sets
+      ResultSetCollection.new(self)
+    end
+
+    def get_result_sets
+      result_sets.to_a
+    end
+
+    def create_result_set(name)
+      result_sets[name].create!
+    end
+
+    def delete_result_set(name)
+      result_sets[name].delete!
+    end
+
+    def result_set_exists?
+      result_sets[name].exists?
+    end
+
+    def query(dbname, sql)
+      # TODO => Job
+    end
+
+    def jobs
+      JobCollection.new(self)
+    end
+
+    def get_jobs(*args)
+      jobs[*args].to_a
+    end
+
+    def get_job(job_id)
+      jobs[job_id]
+    end
+
+    def kill_job(job_id)
+      jobs[job_id].kill
+    end
+
+    def schedules
+      ScheduleCollection.new(self)
+    end
+
+    def get_schedules
+      schedules.to_a
+    end
+
+    def create_schedule(name, cron, opts)
+      schedules[name].create!(cron, opts)
+    end
+
+    def delete_schedule(name)
+      schedules[name].delete!
+    end
+
+    def schedule_exists?(name)
+      schedules[name].exists?
+    end
+
+    def history(schedule_name, *args)
+      schedules[name].history[*args]
+    end
+
+    def get_history(schedule_name, *args)
+      get_history.to_a
+    end
   end
-
-  def self.server_status
-    api = API.new(nil)
-    api.server_status
-  end
-
-  def initialize(apikey)
-    @api = API.new(apikey)
-  end
-
-  attr_reader :api
-
-  def apikey
-    @api.apikey
-  end
-
-  def server_status
-    @api.server_status
-  end
-
-  # => true
-  def create_database(db_name)
-    @api.create_database(db_name)
-  end
-
-  # => true
-  def delete_database(db_name)
-    @api.delete_database(db_name)
-  end
-
-  # => [Database]
-  def databases
-    names = @api.list_databases
-    names.map {|db_name|
-      Database.new(self, db_name)
-    }
-  end
-
-  # => Database
-  def database(db_name)
-    names = @api.list_databases
-    names.each {|n|
-      if n == db_name
-        return Database.new(self, db_name)
-      end
-    }
-    raise NotFoundError, "Database '#{db_name}' does not exist"
-  end
-
-  # => true
-  def create_log_table(db_name, table_name)
-    @api.create_log_table(db_name, table_name)
-  end
-
-  # => true
-  def create_item_table(db_name, table_name)
-    @api.create_item_table(db_name, table_name)
-  end
-
-  # => true
-  def update_schema(db_name, table_name, schema)
-    @api.update_schema(db_name, table_name, schema.to_json)
-  end
-
-  # => type:Symbol
-  def delete_table(db_name, table_name)
-    @api.delete_table(db_name, table_name)
-  end
-
-  # => [Table]
-  def tables(db_name)
-    m = @api.list_tables(db_name)
-    m.map {|table_name,(type,schema,count)|
-      schema = Schema.new.from_json(schema)
-      Table.new(self, db_name, table_name, type, schema, count)
-    }
-  end
-
-  # => Table
-  def table(db_name, table_name)
-    tables(db_name).each {|t|
-      if t.name == table_name
-        return t
-      end
-    }
-    raise NotFoundError, "Table '#{db_name}.#{table_name}' does not exist"
-  end
-
-  def tail(db_name, table_name, count, to=nil, from=nil)
-    @api.tail(db_name, table_name, count, to, from)
-  end
-
-  # => Job
-  def query(db_name, q)
-    job_id = @api.hive_query(q, db_name)
-    Job.new(self, job_id, :hive, q)  # TODO url
-  end
-
-  # => [Job]
-  def jobs(from=nil, to=nil)
-    result = @api.list_jobs(from, to)
-    result.map {|job_id,type,status,query,start_at,end_at|
-      Job.new(self, job_id, type, query, status, nil, nil, start_at, end_at)
-    }
-  end
-
-  # => Job
-  def job(job_id)
-    job_id = job_id.to_s
-    type, query, status, url, debug, start_at, end_at = @api.show_job(job_id)
-    Job.new(self, job_id, type, query, status, url, debug, start_at, end_at)
-  end
-
-  # => type:Symbol, url:String
-  def job_status(job_id)
-    type, query, status, url, debug, start_at, end_at = @api.show_job(job_id)
-    return query, status, url, debug, start_at, end_at
-  end
-
-  # => result:[{column:String=>value:Object]
-  def job_result(job_id)
-    @api.job_result(job_id)
-  end
-
-  # => result:String
-  def job_result_format(job_id, format)
-    @api.job_result_format(job_id, format)
-  end
-
-  # => nil
-  def job_result_each(job_id, &block)
-    @api.job_result_each(job_id, &block)
-  end
-
-  # => former_status:String
-  def kill(job_id)
-    @api.kill(job_id)
-  end
-
-  # => first_time:Time
-  def create_schedule(name, opts)
-    raise ArgumentError, "'cron' option is required" unless opts[:cron] || opts['cron']
-    raise ArgumentError, "'query' option is required" unless opts[:query] || opts['query']
-    start = @api.create_schedule(name, opts)
-    return Time.parse(start)
-  end
-
-  # => true
-  def delete_schedule(name)
-    @api.delete_schedule(name)
-  end
-
-  # [Schedule]
-  def schedules
-    result = @api.list_schedules
-    result.map {|name,cron,query,database|
-      Schedule.new(self, name, cron, query, database)
-    }
-  end
-
-  # [ScheduledJob]
-  def history(name, from=nil, to=nil)
-    result = @api.history(name, from, to)
-    result.map {|scheduled_at,job_id,type,status,query,start_at,end_at|
-      ScheduledJob.new(self, scheduled_at, job_id, type, query, status, nil, nil, start_at, end_at)
-    }
-  end
-
-  # => time:Flaot
-  def import(db_name, table_name, format, stream, size)
-    @api.import(db_name, table_name, format, stream, size)
-  end
-end
-
-
 end
 

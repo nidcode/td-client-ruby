@@ -79,7 +79,7 @@ class API
   ##
 
   # => [name:String]
-  def list_databases
+  def database_list
     code, body, res = get("/v3/database/list")
     if code != "200"
       raise_error("List databases failed", res)
@@ -91,7 +91,7 @@ class API
   end
 
   # => true
-  def delete_database(db)
+  def database_delete(db)
     code, body, res = post("/v3/database/delete/#{e db}")
     if code != "200"
       raise_error("Delete database failed", res)
@@ -100,7 +100,7 @@ class API
   end
 
   # => true
-  def create_database(db)
+  def database_create(db)
     code, body, res = post("/v3/database/create/#{e db}")
     if code != "200"
       raise_error("Create database failed", res)
@@ -113,8 +113,8 @@ class API
   ## Table API
   ##
 
-  # => {name:String => [type:Symbol, count:Integer]}
-  def list_tables(db)
+  # => [(name:String, count:Integer, schema:array)]
+  def table_list(db)
     code, body, res = get("/v3/table/list/#{e db}")
     if code != "200"
       raise_error("List tables failed", res)
@@ -122,7 +122,7 @@ class API
     # TODO format check
     js = JSON.load(body)
     result = {}
-    js["tables"].map {|m|
+    js["tables"].each {|m|
       name = m['name']
       type = (m['type'] || '?').to_sym
       count = (m['count'] || 0).to_i  # TODO?
@@ -132,26 +132,8 @@ class API
     return result
   end
 
-  def create_log_or_item_table(db, table, type)
-    code, body, res = post("/v3/table/create/#{e db}/#{e table}/#{type}")
-    if code != "200"
-      raise_error("Create #{type} table failed", res)
-    end
-    return true
-  end
-  private :create_log_or_item_table
-
   # => true
-  def create_log_table(db, table)
-    create_table(db, table, :log)
-  end
-
-  # => true
-  def create_item_table(db, table)
-    create_table(db, table, :item)
-  end
-
-  def create_table(db, table, type)
+  def table_create(db, table)
     schema = schema.to_s
     code, body, res = post("/v3/table/create/#{e db}/#{e table}/#{type}")
     if code != "200"
@@ -159,19 +141,9 @@ class API
     end
     return true
   end
-  private :create_table
-
-  # => true
-  def update_schema(db, table, schema_json)
-    code, body, res = post("/v3/table/update-schema/#{e db}/#{e table}", {'schema'=>schema_json})
-    if code != "200"
-      raise_error("Create schema table failed", res)
-    end
-    return true
-  end
 
   # => type:Symbol
-  def delete_table(db, table)
+  def table_delete(db, table)
     code, body, res = post("/v3/table/delete/#{e db}/#{e table}")
     if code != "200"
       raise_error("Drop table failed", res)
@@ -182,7 +154,16 @@ class API
     return type
   end
 
-  def tail(db, table, count, to, from)
+  # => true
+  def table_update_schema(db, table, schema)
+    code, body, res = post("/v3/table/update-schema/#{e db}/#{e table}", {'schema'=>schema.to_json})
+    if code != "200"
+      raise_error("Create schema table failed", res)
+    end
+    return true
+  end
+
+  def table_tail(db, table, count, to, from)
     params = {'format' => 'msgpack'}
     params['count'] = count.to_s if count
     params['to'] = to.to_s if to
@@ -205,7 +186,7 @@ class API
   ##
 
   # => [(jobId:String, type:Symbol, status:String, start_at:String, end_at:String)]
-  def list_jobs(from=0, to=nil)
+  def job_list(from, to)
     params = {}
     params['from'] = from.to_s if from
     params['to'] = to.to_s if to
@@ -359,7 +340,7 @@ class API
     return result
   end
 
-  def history(name, from=0, to=nil)
+  def history(name, from, to)
     params = {}
     params['from'] = from.to_s if from
     params['to'] = to.to_s if to
@@ -389,7 +370,7 @@ class API
   ##
 
   # => time:Float
-  def import(db, table, format, stream, size)
+  def table_import(db, table, format, stream, size)
     code, body, res = put("/v3/table/import/#{e db}/#{e table}/#{format}", stream, size)
     if code[0] != ?2
       raise_error("Import failed", res)
